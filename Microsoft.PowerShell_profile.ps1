@@ -87,7 +87,7 @@ function ff($name) {
 # Network Utilities
 function Get-PubIP { (Invoke-WebRequest http://ifconfig.me/ip).Content }
 
-# Open WinUtil
+# Open Sriracha
 function sriracha {
 	iwr -useb https://raw.githubusercontent.com/winters27/sriracha/main/srirachatool.ps1 | iex
 }
