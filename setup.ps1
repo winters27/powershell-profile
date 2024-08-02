@@ -17,9 +17,6 @@ function Test-InternetConnection {
 }
 
 
-# Install or update winget
-Install-Or-Update-Winget
-
 # Function to install Nerd Fonts
 function Install-NerdFonts {
     param (
