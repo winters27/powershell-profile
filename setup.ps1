@@ -16,44 +16,6 @@ function Test-InternetConnection {
     }
 }
 
-# Function to install or update winget
-function Install-Or-Update-Winget {
-    $progressPreference = 'silentlyContinue'
-    $wingetInstalled = Get-AppxPackage -Name Microsoft.DesktopAppInstaller
-
-    if ($wingetInstalled) {
-        Write-Host "Winget is already installed. Checking for updates..."
-        try {
-            # Check for updates using winget
-            $updateOutput = winget upgrade --id Microsoft.DesktopAppInstaller
-            if ($updateOutput -match "No applicable update found.") {
-                Write-Host "Winget is up to date."
-                return
-            }
-            # If there's an update, it will be automatically installed
-        }
-        catch {
-            Write-Host "Failed to check for winget updates. Error: $_"
-        }
-    }
-    else {
-        Write-Host "Winget is not installed. Installing now..."
-    }
-
-    try {
-        Write-Information "Downloading WinGet and its dependencies..."
-        Invoke-WebRequest -Uri https://aka.ms/getwinget -OutFile Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle
-        Invoke-WebRequest -Uri https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx -OutFile Microsoft.VCLibs.x64.14.00.Desktop.appx
-        Invoke-WebRequest -Uri https://github.com/microsoft/microsoft-ui-xaml/releases/download/v2.7.3/Microsoft.UI.Xaml.2.7.x64.appx -OutFile Microsoft.UI.Xaml.2.7.x64.appx
-        Add-AppxPackage Microsoft.VCLibs.x64.14.00.Desktop.appx
-        Add-AppxPackage Microsoft.UI.Xaml.2.7.x64.appx
-        Add-AppxPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle
-        Write-Host "Winget has been successfully installed or updated."
-    }
-    catch {
-        Write-Error "Failed to install or update Winget. Error: $_"
-    }
-}
 
 # Install or update winget
 Install-Or-Update-Winget
