@@ -16,7 +16,6 @@ function Test-InternetConnection {
     }
 }
 
-
 # Function to install Nerd Fonts
 function Install-NerdFonts {
     param (
@@ -111,13 +110,6 @@ catch {
 # Font Install
 Install-NerdFonts -FontName "CascadiaCode" -FontDisplayName "CaskaydiaCove NF"
 
-# Final check and message to the user
-if ((Test-Path -Path $PROFILE) -and (winget list --name "OhMyPosh" -e) -and ($fontFamilies -contains "CaskaydiaCove NF")) {
-    Write-Host "Setup completed successfully. Please restart your PowerShell session to apply changes."
-} else {
-    Write-Warning "Setup completed with errors. Please check the error messages above."
-}
-
 # Choco install
 try {
     Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
@@ -133,6 +125,16 @@ try {
 catch {
     Write-Error "Failed to install Terminal Icons module. Error: $_"
 }
+
+# Neofetch Install
+try {
+    winget install neofetch
+    Write-Host "Neofetch installed successfully."
+}
+catch {
+    Write-Error "Failed to install Neofetch. Error: $_"
+}
+
 # zoxide Install
 try {
     winget install -e --id ajeetdsouza.zoxide
@@ -140,4 +142,11 @@ try {
 }
 catch {
     Write-Error "Failed to install zoxide. Error: $_"
+}
+
+# Final check and message to the user
+if ((Test-Path -Path $PROFILE) -and (winget list --name "OhMyPosh" -e) -and ($fontFamilies -contains "CaskaydiaCove NF") -and (Get-Command neofetch -ErrorAction SilentlyContinue)) {
+    Write-Host "Setup completed successfully. Please restart your PowerShell session to apply changes."
+} else {
+    Write-Warning "Setup completed with errors. Please check the error messages above."
 }
