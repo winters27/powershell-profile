@@ -110,13 +110,6 @@ catch {
 # Font Install
 Install-NerdFonts -FontName "CascadiaCode" -FontDisplayName "CaskaydiaCove NF"
 
-# Final check and message to the user
-if ((Test-Path -Path $PROFILE) -and (winget list --name "OhMyPosh" -e) -and ($fontFamilies -contains "CaskaydiaCove NF")) {
-    Write-Host "Setup completed successfully. Please restart your PowerShell session to apply changes."
-} else {
-    Write-Warning "Setup completed with errors. Please check the error messages above."
-}
-
 # Choco install
 try {
     Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
@@ -151,7 +144,9 @@ catch {
     Write-Error "Failed to install zoxide. Error: $_"
 }
 
-# Function to create PowerShell Start Menu shortcut
+# ===================================================================
+# ==== UPDATED FUNCTION to Create and Pin PowerShell Start Menu shortcut ====
+# ===================================================================
 function New-PowerShellStartMenuShortcut {
     try {
         $pwshPath = "C:\Program Files\PowerShell\7\pwsh.exe"
@@ -162,9 +157,9 @@ function New-PowerShellStartMenuShortcut {
             return $false
         }
 
-        # Create shortcut path (works for any user)
+        # Create shortcut path in the All Users Start Menu
         $startMenuPath = [System.IO.Path]::Combine(
-            [Environment]::GetFolderPath("StartMenu"),
+            [Environment]::GetFolderPath("CommonStartMenu"),
             "Programs",
             "PowerShell 7.lnk"
         )
@@ -172,73 +167,101 @@ function New-PowerShellStartMenuShortcut {
         Write-Host "Creating PowerShell 7 shortcut at: $startMenuPath" -ForegroundColor Cyan
 
         # Create WScript.Shell COM object to create shortcut
-        $shell = New-Object -ComObject WScript.Shell
-        $shortcut = $shell.CreateShortcut($startMenuPath)
+        $wshell = New-Object -ComObject WScript.Shell
+        $shortcut = $wshell.CreateShortcut($startMenuPath)
         
         # Set shortcut properties
         $shortcut.TargetPath = $pwshPath
-        $shortcut.WorkingDirectory = [Environment]::GetFolderPath("UserProfile") # Start in user's home directory
+        $shortcut.WorkingDirectory = [Environment]::GetFolderPath("UserProfile")
         $shortcut.Description = "PowerShell 7"
-        $shortcut.IconLocation = "$pwshPath,0" # Use the pwsh.exe icon
+        $shortcut.IconLocation = "$pwshPath,0"
         
         # Save the shortcut
         $shortcut.Save()
-        
-        # Clean up COM object
-        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
-        
+        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($wshell) | Out-Null
         Write-Host "✓ PowerShell 7 shortcut created successfully!" -ForegroundColor Green
+
+        # --- Automatically Pin to Start ---
+        try {
+            Write-Host "Pinning shortcut to Start Menu..." -ForegroundColor Yellow
+            $startMenuFolder = [System.IO.Path]::GetDirectoryName($startMenuPath)
+            $shortcutName = [System.IO.Path]::GetFileName($startMenuPath)
+
+            # Use the Shell.Application COM object to invoke the 'Pin to Start' verb
+            $shell = New-Object -ComObject Shell.Application
+            $folder = $shell.Namespace($startMenuFolder)
+            $shortcutItem = $folder.ParseName($shortcutName)
+            
+            # The verb is language-specific. "Pin to Start" is for English Windows.
+            $pinVerb = $shortcutItem.Verbs() | Where-Object { $_.Name -eq 'Pin to Start' }
+
+            if ($pinVerb) {
+                $pinVerb.DoIt()
+                Write-Host "✓ Shortcut successfully pinned to Start Menu!" -ForegroundColor Green
+            } else {
+                Write-Warning "Could not find the 'Pin to Start' verb. This can happen on non-English versions of Windows or if disabled by policy."
+            }
+            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
+        } catch {
+            Write-Error "Failed to pin shortcut to Start. Error: $_"
+        }
+        # --- End Pinning Logic ---
+
         return $true
-        
     } catch {
         Write-Error "Failed to create PowerShell 7 shortcut. Error: $_"
         return $false
     }
 }
 
-# Function to prompt user for shortcut creation
+
 function Prompt-CreateShortcut {
     Write-Host "`n" -NoNewline
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "                    Shortcut Creation                      " -ForegroundColor Cyan
+    Write-Host "                      Shortcut Creation                      " -ForegroundColor Cyan
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
     
     do {
-        $response = Read-Host "`nWould you like to create a PowerShell 7 shortcut in the Start Menu? (Y/N)"
+        # The question is now combined
+        $response = Read-Host "`nWould you like to create a PowerShell 7 shortcut and pin it to the Start Menu? (Y/N)"
         $response = $response.Trim().ToUpper()
         
         switch ($response) {
-            'Y' { 
-                Write-Host "Creating shortcut..." -ForegroundColor Yellow
-                $success = New-PowerShellStartMenuShortcut
-                if ($success) {
-                    Write-Host "Shortcut creation completed!" -ForegroundColor Green
-                }
+            'Y' {  
+                Write-Host "Creating and pinning shortcut..." -ForegroundColor Yellow
+                # Call the function which now does both actions
+                New-PowerShellStartMenuShortcut
                 return
             }
-            'N' { 
-                Write-Host "Shortcut creation skipped." -ForegroundColor Yellow
+            'N' {  
+                Write-Host "Shortcut creation and pinning skipped." -ForegroundColor Yellow
                 return
             }
-            default { 
+            default {  
                 Write-Host "Please enter 'Y' for Yes or 'N' for No." -ForegroundColor Red
             }
         }
     } while ($true)
 }
 
+
 # Final check and message to the user
-if ((Test-Path -Path $PROFILE) -and (winget list --name "OhMyPosh" -e) -and ($fontFamilies -contains "CaskaydiaCove NF") -and (Get-Command neofetch -ErrorAction SilentlyContinue)) {
-    Write-Host "Setup completed successfully. Please restart your PowerShell session to apply changes." -ForegroundColor Green
+[void][System.Reflection.Assembly]::LoadWithPartialName("System.Drawing")
+$installedFonts = (New-Object System.Drawing.Text.InstalledFontCollection).Families.Name
+
+if ((Test-Path -Path $PROFILE) -and (winget list --name "OhMyPosh" -e) -and ($installedFonts -contains "CaskaydiaCove NF") -and (Get-Command neofetch -ErrorAction SilentlyContinue)) {
+    Write-Host "`nInitial setup completed successfully." -ForegroundColor Green
 } else {
-    Write-Warning "Setup completed with errors. Please check the error messages above."
+    Write-Warning "`nSetup completed with some errors. Please check the messages above."
 }
 
-# Prompt for shortcut creation
+
+# Prompt for shortcut creation and pinning
 Prompt-CreateShortcut
+
 
 Write-Host "`n" -NoNewline
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
-Write-Host "                    Setup Complete!                        " -ForegroundColor Green
+Write-Host "                      Setup Complete!                        " -ForegroundColor Green
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
 Write-Host "Please restart your PowerShell session to apply all changes." -ForegroundColor Yellow
