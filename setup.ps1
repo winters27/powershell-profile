@@ -144,20 +144,16 @@ catch {
     Write-Error "Failed to install zoxide. Error: $_"
 }
 
-# ===================================================================
-# ==== UPDATED FUNCTION to Create and Pin PowerShell Start Menu shortcut ====
-# ===================================================================
+
 function New-PowerShellStartMenuShortcut {
     try {
         $pwshPath = "C:\Program Files\PowerShell\7\pwsh.exe"
         
-        # Check if PowerShell 7 exists
         if (-not (Test-Path $pwshPath)) {
             Write-Warning "PowerShell 7 not found at $pwshPath. Skipping shortcut creation."
             return $false
         }
 
-        # Create shortcut path in the All Users Start Menu
         $startMenuPath = [System.IO.Path]::Combine(
             [Environment]::GetFolderPath("CommonStartMenu"),
             "Programs",
@@ -166,20 +162,23 @@ function New-PowerShellStartMenuShortcut {
 
         Write-Host "Creating PowerShell 7 shortcut at: $startMenuPath" -ForegroundColor Cyan
 
-        # Create WScript.Shell COM object to create shortcut
         $wshell = New-Object -ComObject WScript.Shell
         $shortcut = $wshell.CreateShortcut($startMenuPath)
         
-        # Set shortcut properties
         $shortcut.TargetPath = $pwshPath
         $shortcut.WorkingDirectory = [Environment]::GetFolderPath("UserProfile")
         $shortcut.Description = "PowerShell 7"
         $shortcut.IconLocation = "$pwshPath,0"
         
-        # Save the shortcut
         $shortcut.Save()
         [System.Runtime.Interopservices.Marshal]::ReleaseComObject($wshell) | Out-Null
         Write-Host "✓ PowerShell 7 shortcut created successfully!" -ForegroundColor Green
+
+        # ================== FIX ==================
+        # Add a short pause to prevent a race condition where the shell crashes
+        # when trying to pin a shortcut that it hasn't fully registered yet.
+        Start-Sleep -Seconds 1
+        # =========================================
 
         # --- Automatically Pin to Start ---
         try {
@@ -187,12 +186,10 @@ function New-PowerShellStartMenuShortcut {
             $startMenuFolder = [System.IO.Path]::GetDirectoryName($startMenuPath)
             $shortcutName = [System.IO.Path]::GetFileName($startMenuPath)
 
-            # Use the Shell.Application COM object to invoke the 'Pin to Start' verb
             $shell = New-Object -ComObject Shell.Application
             $folder = $shell.Namespace($startMenuFolder)
             $shortcutItem = $folder.ParseName($shortcutName)
             
-            # The verb is language-specific. "Pin to Start" is for English Windows.
             $pinVerb = $shortcutItem.Verbs() | Where-Object { $_.Name -eq 'Pin to Start' }
 
             if ($pinVerb) {
