@@ -291,9 +291,23 @@ function Install-PowerShell7 {
         $currentVersion = $PSVersionTable.PSVersion
         Write-Host "Current PowerShell version: $currentVersion" -ForegroundColor Yellow
         
+        # Check if PowerShell 7 exists on the system (even if not currently running)
+        $ps7Path = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
+        $ps7Installed = Test-Path $ps7Path
+        
         if ($currentVersion.Major -ge 7) {
-            Write-Host "✓ PowerShell 7+ is already installed!" -ForegroundColor Green
+            Write-Host "✓ PowerShell 7+ is currently running!" -ForegroundColor Green
             return $true
+        } elseif ($ps7Installed) {
+            try {
+                $ps7Version = & $ps7Path -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' 2>$null
+                Write-Host "✓ PowerShell 7 is already installed (version $ps7Version)" -ForegroundColor Green
+                Write-Host "  But you're currently running Windows PowerShell 5.1" -ForegroundColor Cyan
+                return $true
+            } catch {
+                Write-Host "✓ PowerShell 7 is installed but version check failed" -ForegroundColor Green
+                return $true
+            }
         }
         
         Write-Host "PowerShell 7 is required for optimal profile experience." -ForegroundColor Yellow
@@ -362,7 +376,6 @@ function Install-PowerShell7 {
             Write-Host "✓ PowerShell 7 installed successfully!" -ForegroundColor Green
             
             # Verify installation
-            $ps7Path = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
             if (Test-Path $ps7Path) {
                 try {
                     $installedVersion = & $ps7Path -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' 2>$null
@@ -427,53 +440,85 @@ function Install-ProfileForPowerShell7 {
 function Prompt-PowerShell7Installation {
     Write-Host "`n" -NoNewline
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "                   PowerShell 7 Installation               " -ForegroundColor Cyan
+    Write-Host "                   PowerShell 7 Setup                      " -ForegroundColor Cyan
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "PowerShell 7 is required for the optimal profile experience." -ForegroundColor White
-    Write-Host "Benefits include:" -ForegroundColor White
-    Write-Host "• Enhanced performance and compatibility" -ForegroundColor Cyan
-    Write-Host "• Modern PSReadLine features" -ForegroundColor Cyan
-    Write-Host "• Cross-platform support" -ForegroundColor Cyan
-    Write-Host "• Latest PowerShell features" -ForegroundColor Cyan
     
-    do {
-        $response = Read-Host "`nWould you like to install PowerShell 7? (Y/N)"
-        $response = $response.Trim().ToUpper()
+    # Check PowerShell 7 status
+    $ps7Path = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
+    $ps7Installed = Test-Path $ps7Path
+    $currentVersion = $PSVersionTable.PSVersion
+    
+    if ($currentVersion.Major -ge 7) {
+        Write-Host "✓ You're already running PowerShell 7!" -ForegroundColor Green
+        Write-Host "Setting up profile for your current PowerShell 7 installation..." -ForegroundColor Cyan
         
-        switch ($response) {
-            'Y' { 
-                $installSuccess = Install-PowerShell7
-                if ($installSuccess) {
-                    Write-Host "`n✓ PowerShell 7 installation completed!" -ForegroundColor Green
-                    
-                    # Now install the profile specifically for PowerShell 7
-                    $profileSuccess = Install-ProfileForPowerShell7
-                    
-                    if ($profileSuccess) {
-                        Write-Host "`n✓ PowerShell 7 profile configured!" -ForegroundColor Green
-                        Write-Host "`nSetup completed! To use PowerShell 7 with your new profile:" -ForegroundColor Yellow
-                        Write-Host "1. Close this window" -ForegroundColor Cyan
-                        Write-Host "2. Open PowerShell 7 from the Start Menu" -ForegroundColor Cyan
-                        Write-Host "3. Or run 'pwsh' from any command line" -ForegroundColor Cyan
-                        Write-Host "`nEnjoy your enhanced PowerShell experience! 🚀" -ForegroundColor Green
-                    } else {
-                        Write-Host "PowerShell 7 profile setup failed, but PowerShell 7 is installed." -ForegroundColor Yellow
-                    }
-                } else {
-                    Write-Host "PowerShell 7 installation failed." -ForegroundColor Red
-                }
-                return
-            }
-            'N' { 
-                Write-Host "PowerShell 7 installation skipped." -ForegroundColor Yellow
-                Write-Host "Continuing with Windows PowerShell 5.1 profile setup..." -ForegroundColor Cyan
-                return
-            }
-            default { 
-                Write-Host "Please enter 'Y' for Yes or 'N' for No." -ForegroundColor Red
-            }
+        $profileSuccess = Install-ProfileForPowerShell7
+        if ($profileSuccess) {
+            Write-Host "`n✓ PowerShell 7 profile configured!" -ForegroundColor Green
         }
-    } while ($true)
+        return
+        
+    } elseif ($ps7Installed) {
+        Write-Host "✓ PowerShell 7 is already installed on your system" -ForegroundColor Green
+        Write-Host "  But you're currently running Windows PowerShell 5.1" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Setting up profile for your existing PowerShell 7..." -ForegroundColor Cyan
+        
+        $profileSuccess = Install-ProfileForPowerShell7
+        if ($profileSuccess) {
+            Write-Host "`n✓ PowerShell 7 profile configured!" -ForegroundColor Green
+            Write-Host "`nTo use PowerShell 7 with your new profile:" -ForegroundColor Yellow
+            Write-Host "1. Close this window" -ForegroundColor Cyan
+            Write-Host "2. Open PowerShell 7 from the Start Menu" -ForegroundColor Cyan
+            Write-Host "3. Or run 'pwsh' from any command line" -ForegroundColor Cyan
+        }
+        return
+        
+    } else {
+        Write-Host "PowerShell 7 is required for the optimal profile experience." -ForegroundColor White
+        Write-Host "Benefits include:" -ForegroundColor White
+        Write-Host "• Enhanced performance and compatibility" -ForegroundColor Cyan
+        Write-Host "• Modern PSReadLine features" -ForegroundColor Cyan
+        Write-Host "• Cross-platform support" -ForegroundColor Cyan
+        Write-Host "• Latest PowerShell features" -ForegroundColor Cyan
+        
+        do {
+            $response = Read-Host "`nWould you like to install PowerShell 7? (Y/N)"
+            $response = $response.Trim().ToUpper()
+            
+            switch ($response) {
+                'Y' { 
+                    $installSuccess = Install-PowerShell7
+                    if ($installSuccess) {
+                        Write-Host "`n✓ PowerShell 7 installation completed!" -ForegroundColor Green
+                        
+                        # Now install the profile specifically for PowerShell 7
+                        $profileSuccess = Install-ProfileForPowerShell7
+                        
+                        if ($profileSuccess) {
+                            Write-Host "`n✓ PowerShell 7 profile configured!" -ForegroundColor Green
+                            Write-Host "`nSetup completed! To use PowerShell 7 with your new profile:" -ForegroundColor Yellow
+                            Write-Host "1. Close this window" -ForegroundColor Cyan
+                            Write-Host "2. Open PowerShell 7 from the Start Menu" -ForegroundColor Cyan
+                            Write-Host "3. Or run 'pwsh' from any command line" -ForegroundColor Cyan
+                            Write-Host "`nEnjoy your enhanced PowerShell experience! 🚀" -ForegroundColor Green
+                        }
+                    } else {
+                        Write-Host "PowerShell 7 installation failed." -ForegroundColor Red
+                    }
+                    return
+                }
+                'N' { 
+                    Write-Host "PowerShell 7 installation skipped." -ForegroundColor Yellow
+                    Write-Host "Continuing with Windows PowerShell 5.1 profile setup..." -ForegroundColor Cyan
+                    return
+                }
+                default { 
+                    Write-Host "Please enter 'Y' for Yes or 'N' for No." -ForegroundColor Red
+                }
+            }
+        } while ($true)
+    }
 }
 
 Prompt-PowerShell7Installation
