@@ -16,6 +16,210 @@ function Test-InternetConnection {
     }
 }
 
+# Function to configure Windows Terminal settings
+function Set-WindowsTerminalSettings {
+    try {
+        Write-Host "Configuring Windows Terminal settings..." -ForegroundColor Cyan
+        
+        # Find Windows Terminal settings path
+        $terminalSettingsPath = $null
+        $possiblePaths = @(
+            "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json",
+            "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json",
+            "$env:APPDATA\Microsoft\Windows Terminal\settings.json"
+        )
+        
+        foreach ($path in $possiblePaths) {
+            if (Test-Path (Split-Path $path -Parent)) {
+                $terminalSettingsPath = $path
+                Write-Host "Found Windows Terminal path: $(Split-Path $path -Parent)" -ForegroundColor Green
+                break
+            }
+        }
+        
+        if (-not $terminalSettingsPath) {
+            Write-Warning "Windows Terminal settings directory not found. Please ensure Windows Terminal is installed."
+            return $false
+        }
+        
+        # Create backup of existing settings
+        if (Test-Path $terminalSettingsPath) {
+            $backupPath = $terminalSettingsPath.Replace(".json", "_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss').json")
+            Copy-Item $terminalSettingsPath $backupPath -Force
+            Write-Host "Existing settings backed up to: $backupPath" -ForegroundColor Yellow
+        }
+        
+        # Create the optimized Windows Terminal settings (your updated configuration)
+        $terminalSettings = @{
+            '$help' = "https://aka.ms/terminal-documentation"
+            '$schema' = "https://aka.ms/terminal-profiles-schema"
+            actions = @(
+                @{
+                    command = @{
+                        action = "copy"
+                        singleLine = $false
+                    }
+                    id = "User.copy.644BA8F2"
+                },
+                @{
+                    command = "paste"
+                    id = "User.paste"
+                },
+                @{
+                    command = @{
+                        action = "splitPane"
+                        split = "auto"
+                        splitMode = "duplicate"
+                    }
+                    id = "User.splitPane.A6751878"
+                },
+                @{
+                    command = "find"
+                    id = "User.find"
+                }
+            )
+            copyFormatting = "none"
+            copyOnSelect = $false
+            defaultProfile = "{574e775e-4f2a-5b96-ac1e-a2962a402336}"
+            keybindings = @(
+                @{
+                    id = "User.copy.644BA8F2"
+                    keys = "ctrl+c"
+                },
+                @{
+                    id = "User.find"
+                    keys = "ctrl+shift+f"
+                },
+                @{
+                    id = "User.paste"
+                    keys = "ctrl+v"
+                },
+                @{
+                    id = "User.splitPane.A6751878"
+                    keys = "alt+shift+d"
+                }
+            )
+            newTabMenu = @(
+                @{
+                    type = "remainingProfiles"
+                }
+            )
+            profiles = @{
+                defaults = @{}
+                list = @(
+                    @{
+                        commandline = "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+                        elevate = $true
+                        guid = "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}"
+                        hidden = $false
+                        name = "Windows PowerShell"
+                        opacity = 25
+                        useAcrylic = $true
+                    },
+                    @{
+                        commandline = "%SystemRoot%\System32\cmd.exe"
+                        elevate = $true
+                        guid = "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}"
+                        hidden = $false
+                        name = "Command Prompt"
+                        opacity = 25
+                        useAcrylic = $true
+                    },
+                    @{
+                        guid = "{b453ae62-4e3d-5e58-b989-0a998ec441b8}"
+                        hidden = $false
+                        name = "Azure Cloud Shell"
+                        source = "Windows.Terminal.Azure"
+                    },
+                    @{
+                        colorScheme = "Tango Dark"
+                        elevate = $true
+                        font = @{
+                            face = "CaskaydiaCove Nerd Font"
+                            size = 15
+                        }
+                        guid = "{574e775e-4f2a-5b96-ac1e-a2962a402336}"
+                        hidden = $false
+                        name = "PowerShell"
+                        opacity = 25
+                        source = "Windows.Terminal.PowershellCore"
+                        startingDirectory = $null
+                        useAcrylic = $true
+                    },
+                    @{
+                        guid = "{2ece5bfe-50ed-5f3a-ab87-5cd4baafed2b}"
+                        hidden = $false
+                        name = "Git Bash"
+                        source = "Git"
+                    }
+                )
+            }
+            schemes = @()
+            themes = @()
+        }
+        
+        # Ensure the directory exists
+        $settingsDir = Split-Path $terminalSettingsPath -Parent
+        if (-not (Test-Path $settingsDir)) {
+            New-Item -Path $settingsDir -ItemType Directory -Force | Out-Null
+        }
+        
+        # Convert to JSON and save
+        $jsonSettings = $terminalSettings | ConvertTo-Json -Depth 10
+        $jsonSettings | Out-File -FilePath $terminalSettingsPath -Encoding UTF8 -Force
+        
+        Write-Host "✓ Windows Terminal settings configured successfully!" -ForegroundColor Green
+        Write-Host "Settings saved to: $terminalSettingsPath" -ForegroundColor Cyan
+        Write-Host "✓ All profiles now have transparent background (25% opacity)" -ForegroundColor Green
+        Write-Host "✓ Windows PowerShell and Command Prompt set to auto-elevate" -ForegroundColor Green
+        Write-Host "✓ PowerShell 7 set as default profile with Nerd Font" -ForegroundColor Green
+        
+        return $true
+        
+    } catch {
+        Write-Error "Failed to configure Windows Terminal settings. Error: $_"
+        return $false
+    }
+}
+
+# Function to prompt user for Windows Terminal configuration
+function Prompt-ConfigureTerminal {
+    Write-Host "`n" -NoNewline
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "                Windows Terminal Configuration              " -ForegroundColor Cyan
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "This will configure Windows Terminal with:" -ForegroundColor White
+    Write-Host "• PowerShell 7 as default profile" -ForegroundColor Cyan
+    Write-Host "• CaskaydiaCove Nerd Font (size 15)" -ForegroundColor Cyan
+    Write-Host "• 25% opacity with acrylic effect for all profiles" -ForegroundColor Cyan
+    Write-Host "• Auto-elevation for PowerShell and Command Prompt" -ForegroundColor Cyan
+    Write-Host "• Custom keybindings (Ctrl+C/V, Alt+Shift+D for split)" -ForegroundColor Cyan
+    
+    do {
+        $response = Read-Host "`nWould you like to apply these Windows Terminal settings? (Y/N)"
+        $response = $response.Trim().ToUpper()
+        
+        switch ($response) {
+            'Y' { 
+                Write-Host "Configuring Windows Terminal..." -ForegroundColor Yellow
+                $success = Set-WindowsTerminalSettings
+                if ($success) {
+                    Write-Host "`nWindows Terminal configuration completed!" -ForegroundColor Green
+                    Write-Host "Note: Restart Windows Terminal to see the changes." -ForegroundColor Yellow
+                }
+                return
+            }
+            'N' { 
+                Write-Host "Windows Terminal configuration skipped." -ForegroundColor Yellow
+                return
+            }
+            default { 
+                Write-Host "Please enter 'Y' for Yes or 'N' for No." -ForegroundColor Red
+            }
+        }
+    } while ($true)
+}
+
 # Function to install Nerd Fonts
 function Install-NerdFonts {
     param (
@@ -143,6 +347,8 @@ try {
 catch {
     Write-Error "Failed to install zoxide. Error: $_"
 }
+
+Prompt-ConfigureTerminal
 
 # Final check and message to the user
 [void][System.Reflection.Assembly]::LoadWithPartialName("System.Drawing")
