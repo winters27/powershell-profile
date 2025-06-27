@@ -509,7 +509,6 @@ $($PSStyle.Foreground.Green)Get-PubIP$($PSStyle.Reset) - Retrieves the public IP
 
 $($PSStyle.Foreground.Green)sriracha$($PSStyle.Reset) - Runs the Sriracha Tool script from Sriracha Gang.
 
-
 $($PSStyle.Foreground.Green)uptime$($PSStyle.Reset) - Displays the system uptime.
 
 $($PSStyle.Foreground.Green)reload-profile$($PSStyle.Reset) - Reloads the current user's PowerShell profile.
