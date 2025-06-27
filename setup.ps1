@@ -384,6 +384,46 @@ function Install-PowerShell7 {
     }
 }
 
+function Install-ProfileForPowerShell7 {
+    try {
+        Write-Host "Setting up profile for PowerShell 7..." -ForegroundColor Cyan
+        
+        $ps7Path = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
+        if (-not (Test-Path $ps7Path)) {
+            Write-Warning "PowerShell 7 not found. Skipping profile setup."
+            return $false
+        }
+        
+        # Create PowerShell 7 profile directory
+        $ps7ProfileDir = "$env:USERPROFILE\Documents\PowerShell"
+        if (-not (Test-Path $ps7ProfileDir)) {
+            New-Item -Path $ps7ProfileDir -ItemType Directory -Force | Out-Null
+            Write-Host "✓ Created PowerShell 7 profile directory: $ps7ProfileDir" -ForegroundColor Green
+        }
+        
+        # Download profile for PowerShell 7
+        $ps7ProfilePath = "$ps7ProfileDir\Microsoft.PowerShell_profile.ps1"
+        
+        if (Test-Path $ps7ProfilePath) {
+            $backupPath = "$ps7ProfilePath.backup_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+            Move-Item $ps7ProfilePath $backupPath -Force
+            Write-Host "✓ Existing PowerShell 7 profile backed up to: $backupPath" -ForegroundColor Yellow
+        }
+        
+        Write-Host "Downloading PowerShell 7 profile..." -ForegroundColor Yellow
+        Invoke-RestMethod https://raw.githubusercontent.com/winters27/powershell-profile/main/Microsoft.PowerShell_profile.ps1 -OutFile $ps7ProfilePath
+        
+        Write-Host "✓ PowerShell 7 profile installed successfully!" -ForegroundColor Green
+        Write-Host "Profile location: $ps7ProfilePath" -ForegroundColor Cyan
+        
+        return $true
+        
+    } catch {
+        Write-Error "Failed to install PowerShell 7 profile. Error: $_"
+        return $false
+    }
+}
+
 function Prompt-PowerShell7Installation {
     Write-Host "`n" -NoNewline
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
@@ -402,26 +442,31 @@ function Prompt-PowerShell7Installation {
         
         switch ($response) {
             'Y' { 
-                $success = Install-PowerShell7
-                if ($success) {
+                $installSuccess = Install-PowerShell7
+                if ($installSuccess) {
                     Write-Host "`n✓ PowerShell 7 installation completed!" -ForegroundColor Green
-                    Write-Host "`nIMPORTANT: Please restart this setup script in PowerShell 7 for the best experience." -ForegroundColor Yellow
-                    Write-Host "You can find PowerShell 7 in the Start Menu or run 'pwsh' from the command line." -ForegroundColor Cyan
                     
-                    $continueResponse = Read-Host "`nContinue with current setup in Windows PowerShell 5.1? (Y/N)"
-                    if ($continueResponse.Trim().ToUpper() -eq 'N') {
-                        Write-Host "Setup paused. Please restart in PowerShell 7 for optimal results." -ForegroundColor Yellow
-                        exit
+                    # Now install the profile specifically for PowerShell 7
+                    $profileSuccess = Install-ProfileForPowerShell7
+                    
+                    if ($profileSuccess) {
+                        Write-Host "`n✓ PowerShell 7 profile configured!" -ForegroundColor Green
+                        Write-Host "`nSetup completed! To use PowerShell 7 with your new profile:" -ForegroundColor Yellow
+                        Write-Host "1. Close this window" -ForegroundColor Cyan
+                        Write-Host "2. Open PowerShell 7 from the Start Menu" -ForegroundColor Cyan
+                        Write-Host "3. Or run 'pwsh' from any command line" -ForegroundColor Cyan
+                        Write-Host "`nEnjoy your enhanced PowerShell experience! 🚀" -ForegroundColor Green
+                    } else {
+                        Write-Host "PowerShell 7 profile setup failed, but PowerShell 7 is installed." -ForegroundColor Yellow
                     }
                 } else {
-                    Write-Host "PowerShell 7 installation failed. Continuing with Windows PowerShell 5.1..." -ForegroundColor Yellow
-                    Write-Host "Some features may not work correctly." -ForegroundColor Red
+                    Write-Host "PowerShell 7 installation failed." -ForegroundColor Red
                 }
                 return
             }
             'N' { 
                 Write-Host "PowerShell 7 installation skipped." -ForegroundColor Yellow
-                Write-Host "Note: Some profile features may not work correctly in Windows PowerShell 5.1." -ForegroundColor Red
+                Write-Host "Continuing with Windows PowerShell 5.1 profile setup..." -ForegroundColor Cyan
                 return
             }
             default { 
