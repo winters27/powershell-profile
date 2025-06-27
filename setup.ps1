@@ -4,6 +4,69 @@ if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     break
 }
 
+function Set-PowerShellExecutionPolicy {
+    try {
+        Write-Host "Configuring PowerShell execution policy..." -ForegroundColor Cyan
+        
+        # Check current execution policy
+        $currentPolicy = Get-ExecutionPolicy -Scope CurrentUser
+        $machinePolicy = Get-ExecutionPolicy -Scope LocalMachine
+        
+        Write-Host "Current execution policies:" -ForegroundColor Yellow
+        Write-Host "  CurrentUser: $currentPolicy" -ForegroundColor White
+        Write-Host "  LocalMachine: $machinePolicy" -ForegroundColor White
+        
+        # Set execution policy for current user (safer approach)
+        if ($currentPolicy -eq "Restricted" -or $currentPolicy -eq "Undefined") {
+            Write-Host "Setting execution policy for CurrentUser to RemoteSigned..." -ForegroundColor Yellow
+            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+            Write-Host "✓ CurrentUser execution policy set to RemoteSigned" -ForegroundColor Green
+        } else {
+            Write-Host "✓ CurrentUser execution policy is already configured ($currentPolicy)" -ForegroundColor Green
+        }
+        
+        # Set for LocalMachine (system-wide) if admin and needed
+        if ($machinePolicy -eq "Restricted" -or $machinePolicy -eq "Undefined") {
+            Write-Host "Setting execution policy for LocalMachine to RemoteSigned..." -ForegroundColor Yellow
+            try {
+                Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
+                Write-Host "✓ LocalMachine execution policy set to RemoteSigned" -ForegroundColor Green
+            } catch {
+                Write-Host "⚠ Could not set LocalMachine policy (may require higher privileges)" -ForegroundColor Yellow
+                Write-Host "  CurrentUser policy should be sufficient for most scenarios" -ForegroundColor Cyan
+            }
+        } else {
+            Write-Host "✓ LocalMachine execution policy is already configured ($machinePolicy)" -ForegroundColor Green
+        }
+        
+        # Verify the changes
+        $newCurrentPolicy = Get-ExecutionPolicy -Scope CurrentUser
+        $newMachinePolicy = Get-ExecutionPolicy -Scope LocalMachine
+        
+        Write-Host "Updated execution policies:" -ForegroundColor Green
+        Write-Host "  CurrentUser: $newCurrentPolicy" -ForegroundColor White
+        Write-Host "  LocalMachine: $newMachinePolicy" -ForegroundColor White
+        
+        return $true
+        
+    } catch {
+        Write-Error "Failed to configure execution policy. Error: $_"
+        return $false
+    }
+}
+
+# Automatically configure execution policy
+Write-Host "`n═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "                 Execution Policy Configuration             " -ForegroundColor Cyan
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+
+$policySuccess = Set-PowerShellExecutionPolicy
+if (-not $policySuccess) {
+    Write-Warning "Execution policy configuration failed. Some features may not work correctly."
+} else {
+    Write-Host "✓ Execution policy configuration completed!" -ForegroundColor Green
+}
+
 # Function to test internet connectivity
 function Test-InternetConnection {
     try {
@@ -219,6 +282,156 @@ function Prompt-ConfigureTerminal {
         }
     } while ($true)
 }
+
+function Install-PowerShell7 {
+    try {
+        Write-Host "Checking PowerShell version..." -ForegroundColor Cyan
+        
+        # Check current PowerShell version
+        $currentVersion = $PSVersionTable.PSVersion
+        Write-Host "Current PowerShell version: $currentVersion" -ForegroundColor Yellow
+        
+        if ($currentVersion.Major -ge 7) {
+            Write-Host "✓ PowerShell 7+ is already installed!" -ForegroundColor Green
+            return $true
+        }
+        
+        Write-Host "PowerShell 7 is required for optimal profile experience." -ForegroundColor Yellow
+        Write-Host "Installing PowerShell 7..." -ForegroundColor Cyan
+        
+        # Try winget first (most reliable)
+        try {
+            $wingetResult = winget install --id Microsoft.PowerShell --accept-source-agreements --accept-package-agreements --silent
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "✓ PowerShell 7 installed successfully via winget!" -ForegroundColor Green
+                return $true
+            } else {
+                Write-Host "⚠ Winget installation returned exit code: $LASTEXITCODE" -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "⚠ Winget installation failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+        
+        # Fallback: Direct MSI download
+        Write-Host "Trying direct MSI installation..." -ForegroundColor Yellow
+        
+        # Get latest PowerShell release
+        $apiUrl = "https://api.github.com/repos/PowerShell/PowerShell/releases/latest"
+        $latestRelease = Invoke-RestMethod -Uri $apiUrl
+        $latestVersion = $latestRelease.tag_name.Trim('v')
+        
+        # Determine architecture
+        $architecture = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
+        $downloadUrl = $latestRelease.assets | Where-Object { 
+            $_.name -like "*win-$architecture.msi" 
+        } | Select-Object -First 1 -ExpandProperty browser_download_url
+        
+        if (-not $downloadUrl) {
+            Write-Error "Could not find PowerShell MSI download URL for $architecture architecture."
+            return $false
+        }
+        
+        $fileName = Split-Path $downloadUrl -Leaf
+        $msiPath = Join-Path $env:TEMP $fileName
+        
+        Write-Host "Downloading PowerShell $latestVersion..." -ForegroundColor Cyan
+        Write-Host "From: $downloadUrl" -ForegroundColor Gray
+        
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $msiPath -UseBasicParsing
+        
+        Write-Host "Installing PowerShell 7..." -ForegroundColor Yellow
+        
+        $arguments = @(
+            "/i"
+            "`"$msiPath`""
+            "/quiet"
+            "/norestart"
+            "ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1"
+            "ADD_FILE_CONTEXT_MENU_RUNPOWERSHELL=1"
+            "ENABLE_PSREMOTING=1"
+            "REGISTER_MANIFEST=1"
+            "ADD_PATH=1"
+        )
+        
+        $process = Start-Process msiexec.exe -ArgumentList $arguments -Wait -PassThru -NoNewWindow
+        
+        # Clean up
+        Remove-Item $msiPath -Force -ErrorAction SilentlyContinue
+        
+        if ($process.ExitCode -eq 0) {
+            Write-Host "✓ PowerShell 7 installed successfully!" -ForegroundColor Green
+            
+            # Verify installation
+            $ps7Path = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
+            if (Test-Path $ps7Path) {
+                try {
+                    $installedVersion = & $ps7Path -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' 2>$null
+                    Write-Host "✓ Verified installation: PowerShell $installedVersion" -ForegroundColor Green
+                } catch {
+                    Write-Host "✓ PowerShell 7 installed (version verification skipped)" -ForegroundColor Green
+                }
+            }
+            
+            return $true
+        } else {
+            Write-Error "PowerShell 7 installation failed with exit code: $($process.ExitCode)"
+            return $false
+        }
+        
+    } catch {
+        Write-Error "Failed to install PowerShell 7. Error: $_"
+        return $false
+    }
+}
+
+function Prompt-PowerShell7Installation {
+    Write-Host "`n" -NoNewline
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "                   PowerShell 7 Installation               " -ForegroundColor Cyan
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "PowerShell 7 is required for the optimal profile experience." -ForegroundColor White
+    Write-Host "Benefits include:" -ForegroundColor White
+    Write-Host "• Enhanced performance and compatibility" -ForegroundColor Cyan
+    Write-Host "• Modern PSReadLine features" -ForegroundColor Cyan
+    Write-Host "• Cross-platform support" -ForegroundColor Cyan
+    Write-Host "• Latest PowerShell features" -ForegroundColor Cyan
+    
+    do {
+        $response = Read-Host "`nWould you like to install PowerShell 7? (Y/N)"
+        $response = $response.Trim().ToUpper()
+        
+        switch ($response) {
+            'Y' { 
+                $success = Install-PowerShell7
+                if ($success) {
+                    Write-Host "`n✓ PowerShell 7 installation completed!" -ForegroundColor Green
+                    Write-Host "`nIMPORTANT: Please restart this setup script in PowerShell 7 for the best experience." -ForegroundColor Yellow
+                    Write-Host "You can find PowerShell 7 in the Start Menu or run 'pwsh' from the command line." -ForegroundColor Cyan
+                    
+                    $continueResponse = Read-Host "`nContinue with current setup in Windows PowerShell 5.1? (Y/N)"
+                    if ($continueResponse.Trim().ToUpper() -eq 'N') {
+                        Write-Host "Setup paused. Please restart in PowerShell 7 for optimal results." -ForegroundColor Yellow
+                        exit
+                    }
+                } else {
+                    Write-Host "PowerShell 7 installation failed. Continuing with Windows PowerShell 5.1..." -ForegroundColor Yellow
+                    Write-Host "Some features may not work correctly." -ForegroundColor Red
+                }
+                return
+            }
+            'N' { 
+                Write-Host "PowerShell 7 installation skipped." -ForegroundColor Yellow
+                Write-Host "Note: Some profile features may not work correctly in Windows PowerShell 5.1." -ForegroundColor Red
+                return
+            }
+            default { 
+                Write-Host "Please enter 'Y' for Yes or 'N' for No." -ForegroundColor Red
+            }
+        }
+    } while ($true)
+}
+
+Prompt-PowerShell7Installation
 
 # Function to install Nerd Fonts
 function Install-NerdFonts {
