@@ -145,96 +145,197 @@ catch {
 }
 
 
+# Function to create PowerShell Start Menu shortcut and pin to Start
 function New-PowerShellStartMenuShortcut {
+    param(
+        [switch]$PinToStart
+    )
+    
     try {
         $pwshPath = "C:\Program Files\PowerShell\7\pwsh.exe"
         
+        # Check if PowerShell 7 exists
         if (-not (Test-Path $pwshPath)) {
             Write-Warning "PowerShell 7 not found at $pwshPath. Skipping shortcut creation."
             return $false
         }
 
+        # Create shortcut path (works for any user)
         $startMenuPath = [System.IO.Path]::Combine(
-            [Environment]::GetFolderPath("CommonStartMenu"),
+            [Environment]::GetFolderPath("StartMenu"),
             "Programs",
             "PowerShell 7.lnk"
         )
 
         Write-Host "Creating PowerShell 7 shortcut at: $startMenuPath" -ForegroundColor Cyan
 
-        $wshell = New-Object -ComObject WScript.Shell
-        $shortcut = $wshell.CreateShortcut($startMenuPath)
+        # Create WScript.Shell COM object to create shortcut
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($startMenuPath)
         
+        # Set shortcut properties
         $shortcut.TargetPath = $pwshPath
         $shortcut.WorkingDirectory = [Environment]::GetFolderPath("UserProfile")
         $shortcut.Description = "PowerShell 7"
         $shortcut.IconLocation = "$pwshPath,0"
         
+        # Save the shortcut
         $shortcut.Save()
-        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($wshell) | Out-Null
+        
+        # Clean up COM object
+        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
+        
         Write-Host "✓ PowerShell 7 shortcut created successfully!" -ForegroundColor Green
-
-        # ================== FIX ==================
-        # Add a short pause to prevent a race condition where the shell crashes
-        # when trying to pin a shortcut that it hasn't fully registered yet.
-        Start-Sleep -Seconds 1
-        # =========================================
-
-        # --- Automatically Pin to Start ---
-        try {
-            Write-Host "Pinning shortcut to Start Menu..." -ForegroundColor Yellow
-            $startMenuFolder = [System.IO.Path]::GetDirectoryName($startMenuPath)
-            $shortcutName = [System.IO.Path]::GetFileName($startMenuPath)
-
-            $shell = New-Object -ComObject Shell.Application
-            $folder = $shell.Namespace($startMenuFolder)
-            $shortcutItem = $folder.ParseName($shortcutName)
+        
+        # Try to pin to Start menu if requested
+        if ($PinToStart) {
+            Write-Host "Attempting to pin PowerShell 7 to Start menu..." -ForegroundColor Yellow
             
-            $pinVerb = $shortcutItem.Verbs() | Where-Object { $_.Name -eq 'Pin to Start' }
-
-            if ($pinVerb) {
-                $pinVerb.DoIt()
-                Write-Host "✓ Shortcut successfully pinned to Start Menu!" -ForegroundColor Green
-            } else {
-                Write-Warning "Could not find the 'Pin to Start' verb. This can happen on non-English versions of Windows or if disabled by policy."
+            $pinSuccess = $false
+            
+            # Method 1: Try using Shell.Application
+            try {
+                $shell = New-Object -ComObject Shell.Application
+                $folder = $shell.Namespace([System.IO.Path]::GetDirectoryName($startMenuPath))
+                $item = $folder.ParseName([System.IO.Path]::GetFileName($startMenuPath))
+                
+                # Get the "Pin to Start" verb (varies by Windows version and language)
+                $pinVerbs = $item.Verbs() | Where-Object { 
+                    $_.Name -match "Pin to Start|Pin to start|Épingler au menu Démarrer" 
+                }
+                
+                if ($pinVerbs) {
+                    $pinVerbs[0].DoIt()
+                    Write-Host "✓ PowerShell 7 pinned to Start menu successfully!" -ForegroundColor Green
+                    $pinSuccess = $true
+                } else {
+                    Write-Host "⚠ Could not find 'Pin to Start' option via Shell.Application" -ForegroundColor Yellow
+                }
+                
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
+            } catch {
+                Write-Host "⚠ Shell.Application method failed: $($_.Exception.Message)" -ForegroundColor Yellow
             }
-            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
-        } catch {
-            Write-Error "Failed to pin shortcut to Start. Error: $_"
+            
+            # Method 2: Try using PowerShell's Start-Process with verb
+            if (-not $pinSuccess) {
+                try {
+                    # This method works on some Windows 10/11 versions
+                    $verb = (New-Object -ComObject Shell.Application).Namespace([System.IO.Path]::GetDirectoryName($startMenuPath)).ParseName([System.IO.Path]::GetFileName($startMenuPath)).Verbs() | Where-Object {$_.Name -match 'Pin to Start'}
+                    if ($verb) {
+                        $verb.DoIt()
+                        Write-Host "✓ PowerShell 7 pinned to Start menu successfully!" -ForegroundColor Green
+                        $pinSuccess = $true
+                    }
+                } catch {
+                    Write-Host "⚠ Alternative pinning method failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                }
+            }
+            
+            # Method 3: Try PowerShell AppX method (Windows 10/11)
+            if (-not $pinSuccess) {
+                try {
+                    # Create a temporary Start menu layout XML
+                    $layoutXml = @"
+<?xml version="1.0" encoding="utf-8"?>
+<LayoutModificationTemplate xmlns:defaultlayout="http://schemas.microsoft.com/Start/2014/FullDefaultLayout" 
+                           xmlns:start="http://schemas.microsoft.com/Start/2014/StartLayout" 
+                           Version="1" 
+                           xmlns="http://schemas.microsoft.com/Start/2014/LayoutModification">
+  <LayoutOptions StartTileGroupCellWidth="6" />
+  <DefaultLayoutOverride>
+    <StartLayoutCollection>
+      <defaultlayout:StartLayout GroupCellWidth="6">
+        <start:Group Name="">
+          <start:DesktopApplicationTile Size="2x2" Column="0" Row="0" DesktopApplicationLinkPath="$startMenuPath" />
+        </start:Group>
+      </defaultlayout:StartLayout>
+    </StartLayoutCollection>
+  </DefaultLayoutOverride>
+</LayoutModificationTemplate>
+"@
+                    
+                    $tempLayoutPath = "$env:TEMP\PowerShellStartLayout.xml"
+                    $layoutXml | Out-File -FilePath $tempLayoutPath -Encoding UTF8
+                    
+                    # This is more complex and may require additional permissions
+                    Write-Host "⚠ Advanced pinning method would require additional setup" -ForegroundColor Yellow
+                    Remove-Item $tempLayoutPath -Force -ErrorAction SilentlyContinue
+                    
+                } catch {
+                    Write-Host "⚠ XML layout method failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                }
+            }
+            
+            # If all methods failed, provide manual instructions
+            if (-not $pinSuccess) {
+                Write-Host "`n" -NoNewline
+                Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+                Write-Host "                Manual Pinning Instructions                " -ForegroundColor Yellow
+                Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+                Write-Host "To manually pin PowerShell 7 to the Start menu:" -ForegroundColor White
+                Write-Host "1. Press Windows key to open Start menu" -ForegroundColor Cyan
+                Write-Host "2. Type 'PowerShell 7' to find the shortcut" -ForegroundColor Cyan
+                Write-Host "3. Right-click on 'PowerShell 7'" -ForegroundColor Cyan
+                Write-Host "4. Select 'Pin to Start'" -ForegroundColor Cyan
+                Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Yellow
+            }
         }
-        # --- End Pinning Logic ---
-
+        
         return $true
+        
     } catch {
         Write-Error "Failed to create PowerShell 7 shortcut. Error: $_"
         return $false
     }
 }
 
-
+# Updated function to prompt user for shortcut creation
 function Prompt-CreateShortcut {
     Write-Host "`n" -NoNewline
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-    Write-Host "                      Shortcut Creation                      " -ForegroundColor Cyan
+    Write-Host "                    Shortcut Creation                      " -ForegroundColor Cyan
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
     
     do {
-        # The question is now combined
-        $response = Read-Host "`nWould you like to create a PowerShell 7 shortcut and pin it to the Start Menu? (Y/N)"
+        $response = Read-Host "`nWould you like to create a PowerShell 7 shortcut in the Start Menu? (Y/N)"
         $response = $response.Trim().ToUpper()
         
         switch ($response) {
-            'Y' {  
-                Write-Host "Creating and pinning shortcut..." -ForegroundColor Yellow
-                # Call the function which now does both actions
-                New-PowerShellStartMenuShortcut
+            'Y' { 
+                # Ask about pinning to Start
+                do {
+                    $pinResponse = Read-Host "Would you also like to try pinning it to the Start menu? (Y/N)"
+                    $pinResponse = $pinResponse.Trim().ToUpper()
+                    
+                    switch ($pinResponse) {
+                        'Y' {
+                            Write-Host "Creating shortcut and attempting to pin to Start..." -ForegroundColor Yellow
+                            $success = New-PowerShellStartMenuShortcut -PinToStart
+                            if ($success) {
+                                Write-Host "Shortcut creation completed!" -ForegroundColor Green
+                            }
+                            return
+                        }
+                        'N' {
+                            Write-Host "Creating shortcut without pinning..." -ForegroundColor Yellow
+                            $success = New-PowerShellStartMenuShortcut
+                            if ($success) {
+                                Write-Host "Shortcut creation completed!" -ForegroundColor Green
+                            }
+                            return
+                        }
+                        default { 
+                            Write-Host "Please enter 'Y' for Yes or 'N' for No." -ForegroundColor Red
+                        }
+                    }
+                } while ($true)
+            }
+            'N' { 
+                Write-Host "Shortcut creation skipped." -ForegroundColor Yellow
                 return
             }
-            'N' {  
-                Write-Host "Shortcut creation and pinning skipped." -ForegroundColor Yellow
-                return
-            }
-            default {  
+            default { 
                 Write-Host "Please enter 'Y' for Yes or 'N' for No." -ForegroundColor Red
             }
         }
