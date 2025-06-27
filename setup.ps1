@@ -151,9 +151,94 @@ catch {
     Write-Error "Failed to install zoxide. Error: $_"
 }
 
+# Function to create PowerShell Start Menu shortcut
+function New-PowerShellStartMenuShortcut {
+    try {
+        $pwshPath = "C:\Program Files\PowerShell\7\pwsh.exe"
+        
+        # Check if PowerShell 7 exists
+        if (-not (Test-Path $pwshPath)) {
+            Write-Warning "PowerShell 7 not found at $pwshPath. Skipping shortcut creation."
+            return $false
+        }
+
+        # Create shortcut path (works for any user)
+        $startMenuPath = [System.IO.Path]::Combine(
+            [Environment]::GetFolderPath("StartMenu"),
+            "Programs",
+            "PowerShell 7.lnk"
+        )
+
+        Write-Host "Creating PowerShell 7 shortcut at: $startMenuPath" -ForegroundColor Cyan
+
+        # Create WScript.Shell COM object to create shortcut
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($startMenuPath)
+        
+        # Set shortcut properties
+        $shortcut.TargetPath = $pwshPath
+        $shortcut.WorkingDirectory = [Environment]::GetFolderPath("UserProfile") # Start in user's home directory
+        $shortcut.Description = "PowerShell 7"
+        $shortcut.IconLocation = "$pwshPath,0" # Use the pwsh.exe icon
+        
+        # Save the shortcut
+        $shortcut.Save()
+        
+        # Clean up COM object
+        [System.Runtime.Interopservices.Marshal]::ReleaseComObject($shell) | Out-Null
+        
+        Write-Host "✓ PowerShell 7 shortcut created successfully!" -ForegroundColor Green
+        return $true
+        
+    } catch {
+        Write-Error "Failed to create PowerShell 7 shortcut. Error: $_"
+        return $false
+    }
+}
+
+# Function to prompt user for shortcut creation
+function Prompt-CreateShortcut {
+    Write-Host "`n" -NoNewline
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    Write-Host "                    Shortcut Creation                      " -ForegroundColor Cyan
+    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+    
+    do {
+        $response = Read-Host "`nWould you like to create a PowerShell 7 shortcut in the Start Menu? (Y/N)"
+        $response = $response.Trim().ToUpper()
+        
+        switch ($response) {
+            'Y' { 
+                Write-Host "Creating shortcut..." -ForegroundColor Yellow
+                $success = New-PowerShellStartMenuShortcut
+                if ($success) {
+                    Write-Host "Shortcut creation completed!" -ForegroundColor Green
+                }
+                return
+            }
+            'N' { 
+                Write-Host "Shortcut creation skipped." -ForegroundColor Yellow
+                return
+            }
+            default { 
+                Write-Host "Please enter 'Y' for Yes or 'N' for No." -ForegroundColor Red
+            }
+        }
+    } while ($true)
+}
+
 # Final check and message to the user
 if ((Test-Path -Path $PROFILE) -and (winget list --name "OhMyPosh" -e) -and ($fontFamilies -contains "CaskaydiaCove NF") -and (Get-Command neofetch -ErrorAction SilentlyContinue)) {
-    Write-Host "Setup completed successfully. Please restart your PowerShell session to apply changes."
+    Write-Host "Setup completed successfully. Please restart your PowerShell session to apply changes." -ForegroundColor Green
 } else {
     Write-Warning "Setup completed with errors. Please check the error messages above."
 }
+
+# Prompt for shortcut creation
+Prompt-CreateShortcut
+
+Write-Host "`n" -NoNewline
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
+Write-Host "                    Setup Complete!                        " -ForegroundColor Green
+Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
+Write-Host "Please restart your PowerShell session to apply all changes." -ForegroundColor Yellow
